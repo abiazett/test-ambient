@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeflow-training-operator
+  namespace: openshift-ai
+spec:
+  ports:
+  - port: 8080
+    name: metrics
+    targetPort: metrics
+  - port: 8443
+    name: webhook
+    targetPort: webhook
+  selector:
+    app.kubernetes.io/name: kubeflow-training-operator

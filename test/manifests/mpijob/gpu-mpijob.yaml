@@ -1,0 +1,92 @@
+---
+# GPU-enabled MPIJob test manifest
+# This manifest creates an MPIJob with GPU resources for distributed GPU training
+apiVersion: kubeflow.org/v2
+kind: MPIJob
+metadata:
+  name: gpu-mpijob-test
+  namespace: default
+  labels:
+    app: mpijob
+    test: gpu
+    gpu-enabled: "true"
+spec:
+  slotsPerWorker: 2
+  mpiImplementation: OpenMPI
+  runPolicy:
+    cleanPodPolicy: Running
+    ttlSecondsAfterFinished: 600
+    activeDeadlineSeconds: 3600
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: mpi-launcher
+            image: docker.io/kubeflow/mpi-horovod-gpu-example:latest
+            command:
+            - mpirun
+            - --allow-run-as-root
+            - -np
+            - "8"
+            - -bind-to
+            - none
+            - -map-by
+            - slot
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - LD_LIBRARY_PATH
+            - -x
+            - PATH
+            - -mca
+            - pml
+            - ob1
+            - -mca
+            - btl
+            - ^openib
+            - --host
+            - gpu-mpijob-test-worker-0:2,gpu-mpijob-test-worker-1:2,gpu-mpijob-test-worker-2:2,gpu-mpijob-test-worker-3:2
+            - python
+            - /examples/tensorflow_mnist_distributed.py
+            env:
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
+            - name: HOROVOD_MPI_THREADS_DISABLE
+              value: "1"
+            resources:
+              requests:
+                cpu: "2"
+                memory: "4Gi"
+              limits:
+                cpu: "4"
+                memory: "8Gi"
+    Worker:
+      replicas: 4
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: mpi-worker
+            image: docker.io/kubeflow/mpi-horovod-gpu-example:latest
+            command:
+            - /usr/sbin/sshd
+            - -De
+            - -f
+            - /home/mpiuser/.sshd_config
+            env:
+            - name: NCCL_SOCKET_IFNAME
+              value: "eth0"
+            - name: HOROVOD_MPI_THREADS_DISABLE
+              value: "1"
+            resources:
+              requests:
+                cpu: "4"
+                memory: "16Gi"
+                nvidia.com/gpu: 2
+              limits:
+                cpu: "8"
+                memory: "32Gi"
+                nvidia.com/gpu: 2

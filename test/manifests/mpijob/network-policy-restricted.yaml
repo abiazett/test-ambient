@@ -1,0 +1,128 @@
+---
+# MPIJob with restricted network policy
+# This manifest demonstrates network isolation with restricted policy
+apiVersion: kubeflow.org/v2
+kind: MPIJob
+metadata:
+  name: network-restricted-test
+  namespace: default
+  labels:
+    app: mpijob
+    test: network-policy
+    network-policy: restricted
+spec:
+  slotsPerWorker: 1
+  mpiImplementation: OpenMPI
+  networkPolicy:
+    template: Restricted
+  runPolicy:
+    cleanPodPolicy: Running
+    ttlSecondsAfterFinished: 300
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            network-policy: mpijob-restricted
+        spec:
+          containers:
+          - name: mpi-launcher
+            image: docker.io/kubeflow/mpi-horovod-example:latest
+            command:
+            - mpirun
+            - --allow-run-as-root
+            - -np
+            - "2"
+            - --host
+            - network-restricted-test-worker-0:1,network-restricted-test-worker-1:1
+            - python
+            - /examples/tensorflow_mnist.py
+            resources:
+              requests:
+                cpu: "1"
+                memory: "2Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+    Worker:
+      replicas: 2
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            network-policy: mpijob-restricted
+        spec:
+          containers:
+          - name: mpi-worker
+            image: docker.io/kubeflow/mpi-horovod-example:latest
+            command:
+            - /usr/sbin/sshd
+            - -De
+            - -f
+            - /home/mpiuser/.sshd_config
+            resources:
+              requests:
+                cpu: "2"
+                memory: "4Gi"
+              limits:
+                cpu: "4"
+                memory: "8Gi"
+            securityContext:
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1000
+              capabilities:
+                drop:
+                - ALL
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpijob-restricted-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      network-policy: mpijob-restricted
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          network-policy: mpijob-restricted
+    ports:
+    - protocol: TCP
+      port: 22
+    - protocol: TCP
+      port: 1024
+      endPort: 65535
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          network-policy: mpijob-restricted
+    ports:
+    - protocol: TCP
+      port: 22
+    - protocol: TCP
+      port: 1024
+      endPort: 65535
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53

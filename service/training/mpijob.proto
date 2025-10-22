@@ -1,0 +1,286 @@
+syntax = "proto3";
+
+package training;
+
+option go_package = "github.com/opendatahub/training-service/pkg/training";
+
+import "google/protobuf/timestamp.proto";
+
+// MPIJobService provides gRPC endpoints for MPIJob management
+service MPIJobService {
+  // CreateMPIJob creates a new MPIJob
+  rpc CreateMPIJob(CreateMPIJobRequest) returns (CreateMPIJobResponse);
+
+  // GetMPIJob retrieves an MPIJob by name
+  rpc GetMPIJob(GetMPIJobRequest) returns (GetMPIJobResponse);
+
+  // ListMPIJobs lists MPIJobs in a namespace
+  rpc ListMPIJobs(ListMPIJobsRequest) returns (ListMPIJobsResponse);
+
+  // DeleteMPIJob deletes an MPIJob
+  rpc DeleteMPIJob(DeleteMPIJobRequest) returns (DeleteMPIJobResponse);
+
+  // GetMPIJobStatus retrieves the status of an MPIJob
+  rpc GetMPIJobStatus(GetMPIJobStatusRequest) returns (GetMPIJobStatusResponse);
+
+  // WatchMPIJobStatus watches for status changes of an MPIJob
+  rpc WatchMPIJobStatus(WatchMPIJobStatusRequest) returns (stream MPIJobStatusEvent);
+
+  // GetMPIJobLogs retrieves logs from an MPIJob
+  rpc GetMPIJobLogs(GetMPIJobLogsRequest) returns (stream LogMessage);
+}
+
+// CreateMPIJobRequest contains parameters for creating an MPIJob
+message CreateMPIJobRequest {
+  string namespace = 1;
+  MPIJobSpec spec = 2;
+}
+
+// CreateMPIJobResponse contains the created MPIJob
+message CreateMPIJobResponse {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// GetMPIJobRequest contains parameters for getting an MPIJob
+message GetMPIJobRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+// GetMPIJobResponse contains the MPIJob details
+message GetMPIJobResponse {
+  MPIJob mpijob = 1;
+}
+
+// ListMPIJobsRequest contains parameters for listing MPIJobs
+message ListMPIJobsRequest {
+  string namespace = 1;
+  string label_selector = 2;
+  int32 limit = 3;
+  string continue_token = 4;
+}
+
+// ListMPIJobsResponse contains a list of MPIJobs
+message ListMPIJobsResponse {
+  repeated MPIJob items = 1;
+  string continue_token = 2;
+}
+
+// DeleteMPIJobRequest contains parameters for deleting an MPIJob
+message DeleteMPIJobRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+// DeleteMPIJobResponse confirms deletion
+message DeleteMPIJobResponse {
+  string message = 1;
+}
+
+// GetMPIJobStatusRequest contains parameters for getting MPIJob status
+message GetMPIJobStatusRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+// GetMPIJobStatusResponse contains the MPIJob status
+message GetMPIJobStatusResponse {
+  MPIJobStatus status = 1;
+}
+
+// WatchMPIJobStatusRequest contains parameters for watching MPIJob status
+message WatchMPIJobStatusRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+// MPIJobStatusEvent is an event containing status updates
+message MPIJobStatusEvent {
+  string event_type = 1; // ADDED, MODIFIED, DELETED
+  MPIJobStatus status = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// GetMPIJobLogsRequest contains parameters for getting logs
+message GetMPIJobLogsRequest {
+  string namespace = 1;
+  string name = 2;
+  string pod_type = 3; // launcher, worker
+  int32 pod_index = 4; // for worker pods
+  bool follow = 5;
+  int32 tail_lines = 6;
+  google.protobuf.Timestamp since_time = 7;
+}
+
+// LogMessage contains a log line
+message LogMessage {
+  string pod_name = 1;
+  string container_name = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  string message = 4;
+}
+
+// MPIJob represents a complete MPIJob resource
+message MPIJob {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  map<string, string> labels = 4;
+  map<string, string> annotations = 5;
+  google.protobuf.Timestamp created_at = 6;
+  MPIJobSpec spec = 7;
+  MPIJobStatus status = 8;
+}
+
+// MPIJobSpec defines the desired state of an MPIJob
+message MPIJobSpec {
+  int32 slots_per_worker = 1;
+  string mpi_implementation = 2; // OpenMPI, IntelMPI, MPICH
+  map<string, ReplicaSpec> mpi_replica_specs = 3;
+  RunPolicy run_policy = 4;
+  NetworkPolicy network_policy = 5;
+}
+
+// ReplicaSpec defines the configuration for a replica type
+message ReplicaSpec {
+  int32 replicas = 1;
+  string restart_policy = 2;
+  PodTemplateSpec template = 3;
+}
+
+// PodTemplateSpec defines the pod template
+message PodTemplateSpec {
+  map<string, string> labels = 1;
+  map<string, string> annotations = 2;
+  PodSpec spec = 3;
+}
+
+// PodSpec defines the pod specification
+message PodSpec {
+  repeated Container containers = 1;
+  repeated Volume volumes = 2;
+  string service_account = 3;
+  SecurityContext security_context = 4;
+}
+
+// Container defines a container in a pod
+message Container {
+  string name = 1;
+  string image = 2;
+  repeated string command = 3;
+  repeated string args = 4;
+  repeated EnvVar env = 5;
+  ResourceRequirements resources = 6;
+  repeated VolumeMount volume_mounts = 7;
+}
+
+// EnvVar represents an environment variable
+message EnvVar {
+  string name = 1;
+  string value = 2;
+}
+
+// ResourceRequirements defines resource requests and limits
+message ResourceRequirements {
+  map<string, string> requests = 1;
+  map<string, string> limits = 2;
+}
+
+// VolumeMount defines a volume mount
+message VolumeMount {
+  string name = 1;
+  string mount_path = 2;
+  bool read_only = 3;
+}
+
+// Volume defines a volume
+message Volume {
+  string name = 1;
+  VolumeSource source = 2;
+}
+
+// VolumeSource defines the source of a volume
+message VolumeSource {
+  oneof type {
+    ConfigMapVolumeSource config_map = 1;
+    SecretVolumeSource secret = 2;
+    EmptyDirVolumeSource empty_dir = 3;
+    PersistentVolumeClaimVolumeSource persistent_volume_claim = 4;
+  }
+}
+
+// ConfigMapVolumeSource references a ConfigMap
+message ConfigMapVolumeSource {
+  string name = 1;
+}
+
+// SecretVolumeSource references a Secret
+message SecretVolumeSource {
+  string secret_name = 1;
+}
+
+// EmptyDirVolumeSource creates an empty directory
+message EmptyDirVolumeSource {
+  string medium = 1;
+  string size_limit = 2;
+}
+
+// PersistentVolumeClaimVolumeSource references a PVC
+message PersistentVolumeClaimVolumeSource {
+  string claim_name = 1;
+}
+
+// SecurityContext defines security settings
+message SecurityContext {
+  bool run_as_non_root = 1;
+  int64 run_as_user = 2;
+  int64 fs_group = 3;
+}
+
+// RunPolicy defines the running policy
+message RunPolicy {
+  string clean_pod_policy = 1;
+  int32 ttl_seconds_after_finished = 2;
+  int32 active_deadline_seconds = 3;
+  int32 backoff_limit = 4;
+  SchedulingPolicy scheduling_policy = 5;
+}
+
+// SchedulingPolicy defines scheduling parameters
+message SchedulingPolicy {
+  string priority_class = 1;
+  string queue = 2;
+}
+
+// NetworkPolicy defines network configuration
+message NetworkPolicy {
+  string template = 1; // Default, Restricted
+}
+
+// MPIJobStatus represents the observed state of an MPIJob
+message MPIJobStatus {
+  repeated Condition conditions = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp completion_time = 3;
+  map<string, ReplicaStatus> replica_statuses = 4;
+}
+
+// Condition represents a condition of the MPIJob
+message Condition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+  google.protobuf.Timestamp last_transition_time = 5;
+  google.protobuf.Timestamp last_update_time = 6;
+}
+
+// ReplicaStatus represents the status of a replica type
+message ReplicaStatus {
+  int32 active = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+}

@@ -1,0 +1,163 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mpijobs.kubeflow.org
+  labels:
+    app.kubernetes.io/name: mpijob
+    app.kubernetes.io/part-of: kubeflow-training-operator
+spec:
+  group: kubeflow.org
+  names:
+    kind: MPIJob
+    plural: mpijobs
+    singular: mpijob
+    shortNames:
+      - mj
+      - mpij
+  scope: Namespaced
+  versions:
+    - name: v2
+      served: true
+      storage: true
+      additionalPrinterColumns:
+      - jsonPath: .status.conditions[-1:].type
+        name: Status
+        type: string
+      - jsonPath: .status.startTime
+        name: Age
+        type: date
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                runPolicy:
+                  type: object
+                  properties:
+                    cleanPodPolicy:
+                      type: string
+                      enum: ["All", "Running", "None"]
+                    ttlSecondsAfterFinished:
+                      type: integer
+                      minimum: 0
+                    activeDeadlineSeconds:
+                      type: integer
+                      minimum: 0
+                    backoffLimit:
+                      type: integer
+                      minimum: 0
+                    schedulingPolicy:
+                      type: object
+                      properties:
+                        priorityClass:
+                          type: string
+                        queue:
+                          type: string
+                slotsPerWorker:
+                  type: integer
+                  minimum: 1
+                mpiImplementation:
+                  type: string
+                  enum: ["OpenMPI", "IntelMPI", "MPICH"]
+                mpiReplicaSpecs:
+                  type: object
+                  required:
+                    - Launcher
+                    - Worker
+                  properties:
+                    Launcher:
+                      type: object
+                      required:
+                        - replicas
+                        - template
+                      properties:
+                        replicas:
+                          type: integer
+                          minimum: 1
+                          maximum: 1
+                        restartPolicy:
+                          type: string
+                          enum: ["Always", "OnFailure", "Never"]
+                        template:
+                          type: object
+                          properties:
+                            spec:
+                              type: object
+                    Worker:
+                      type: object
+                      required:
+                        - replicas
+                        - template
+                      properties:
+                        replicas:
+                          type: integer
+                          minimum: 1
+                        restartPolicy:
+                          type: string
+                          enum: ["Always", "OnFailure", "Never"]
+                        template:
+                          type: object
+                          properties:
+                            spec:
+                              type: object
+                networkPolicy:
+                  type: object
+                  properties:
+                    template:
+                      type: string
+                      enum: ["Default", "Restricted"]
+            status:
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                      lastUpdateTime:
+                        type: string
+                startTime:
+                  type: string
+                completionTime:
+                  type: string
+                replicaStatuses:
+                  type: object
+                  properties:
+                    Launcher:
+                      type: object
+                      properties:
+                        active:
+                          type: integer
+                        succeeded:
+                          type: integer
+                        failed:
+                          type: integer
+                    Worker:
+                      type: object
+                      properties:
+                        active:
+                          type: integer
+                        succeeded:
+                          type: integer
+                        failed:
+                          type: integer
+      subresources:
+        status: {}

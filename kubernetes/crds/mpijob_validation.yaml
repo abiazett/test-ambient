@@ -1,0 +1,91 @@
+---
+# ValidatingWebhookConfiguration for MPIJob CRD
+# This webhook ensures MPIJob resources meet all validation requirements before creation/update
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: mpijob-validation
+  labels:
+    app.kubernetes.io/name: kubeflow-training-operator
+    app.kubernetes.io/part-of: kubeflow-training-operator
+    app.kubernetes.io/component: webhook
+webhooks:
+- name: mpijob-validation.kubeflow.org
+  clientConfig:
+    service:
+      name: kubeflow-training-operator
+      namespace: openshift-ai
+      path: "/validate/mpijob"
+    caBundle: "${CA_BUNDLE}"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["kubeflow.org"]
+    apiVersions: ["v2"]
+    resources: ["mpijobs"]
+    scope: "Namespaced"
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  timeoutSeconds: 10
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  namespaceSelector:
+    matchExpressions:
+    - key: opendatahub.io/mpijob-enabled
+      operator: In
+      values: ["true"]
+  objectSelector: {}
+
+---
+# Validation rules enforced by the webhook:
+#
+# 1. Resource Limits and Requests Validation
+#    - Worker replicas must be >= 1
+#    - Launcher replicas must be exactly 1
+#    - CPU and memory requests/limits must be specified
+#    - GPU requests must be >= 0
+#    - Resource limits must be >= resource requests
+#
+# 2. Slots Per Worker Validation
+#    - slotsPerWorker must be >= 1
+#    - slotsPerWorker should typically match CPU or GPU allocation
+#
+# 3. MPI Implementation Validation
+#    - Must be one of: OpenMPI, IntelMPI, MPICH
+#    - Container image must have compatible MPI implementation installed
+#
+# 4. Network Policy Validation
+#    - If specified, must be "Default" or "Restricted"
+#    - Restricted mode requires additional NetworkPolicy resources
+#
+# 5. RunPolicy Validation
+#    - cleanPodPolicy must be one of: All, Running, None
+#    - ttlSecondsAfterFinished must be >= 0 if specified
+#    - activeDeadlineSeconds must be >= 0 if specified
+#    - backoffLimit must be >= 0 if specified
+#
+# 6. Scheduling Policy Validation
+#    - priorityClass must exist in cluster if specified
+#    - queue must be valid Volcano queue if gang scheduling enabled
+#
+# 7. Container Spec Validation
+#    - Container image must be specified
+#    - Container command must be specified
+#    - Working directory should be specified
+#    - Volume mounts should be validated against volumes
+#
+# 8. Resource Quota Validation
+#    - Total resources (launcher + all workers) must not exceed namespace quota
+#    - GPU allocation must not exceed available GPUs
+#
+# 9. Security Context Validation
+#    - runAsNonRoot should be true
+#    - allowPrivilegeEscalation should be false
+#    - capabilities should be dropped
+#
+# 10. Label and Annotation Validation
+#     - Required labels must be present
+#     - Annotation format must be valid
+#
+# Webhook Validation Logic Location:
+# Implementation in: operator/webhook/mpijob_validator.go
+# Integration tests in: test/webhook/mpijob_validation_test.go

@@ -1,0 +1,153 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpijob-default-policy
+  namespace: "{{.Namespace}}"
+  labels:
+    app.kubernetes.io/name: mpijob-{{.JobName}}
+    app.kubernetes.io/part-of: kubeflow-training-operator
+    app.kubernetes.io/instance: "{{.JobName}}"
+spec:
+  podSelector:
+    matchLabels:
+      training.kubeflow.org/job-name: "{{.JobName}}"
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow inbound traffic between MPI worker pods
+  - from:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+    - protocol: TCP
+      # MPI dynamic port range (all ports)
+      port: 1024
+      endPort: 65535
+  # Allow inbound traffic for Kubernetes API access
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: TCP
+      port: 443  # Kubernetes API
+  egress:
+  # Allow outbound traffic to other MPI worker pods
+  - to:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+    - protocol: TCP
+      # MPI dynamic port range (all ports)
+      port: 1024
+      endPort: 65535
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow access to Kubernetes API
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: TCP
+      port: 443  # Kubernetes API
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpijob-restricted-policy
+  namespace: "{{.Namespace}}"
+  labels:
+    app.kubernetes.io/name: mpijob-{{.JobName}}
+    app.kubernetes.io/part-of: kubeflow-training-operator
+    app.kubernetes.io/instance: "{{.JobName}}"
+spec:
+  podSelector:
+    matchLabels:
+      training.kubeflow.org/job-name: "{{.JobName}}"
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow inbound traffic only between MPI worker pods, strictly between
+  # pods with the exact job-name
+  - from:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+          training.kubeflow.org/mpijob-role: "Worker"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+    - protocol: TCP
+      # MPI dynamic port range (restricted)
+      port: 30000
+      endPort: 32000
+  # Allow launcher to access workers
+  - from:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+          training.kubeflow.org/mpijob-role: "Launcher"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+  egress:
+  # Allow outbound traffic only to other MPI worker pods
+  - to:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+          training.kubeflow.org/mpijob-role: "Worker"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+    - protocol: TCP
+      # MPI dynamic port range (restricted)
+      port: 30000
+      endPort: 32000
+  # Allow workers to access launcher
+  - to:
+    - podSelector:
+        matchLabels:
+          training.kubeflow.org/job-name: "{{.JobName}}"
+          training.kubeflow.org/mpijob-role: "Launcher"
+    ports:
+    - protocol: TCP
+      port: 22  # SSH port (needed for OpenMPI)
+  # Allow DNS resolution (required)
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow minimal access to Kubernetes API
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: TCP
+      port: 443  # Kubernetes API

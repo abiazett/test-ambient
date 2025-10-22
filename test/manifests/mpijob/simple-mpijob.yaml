@@ -1,0 +1,62 @@
+---
+# Simple MPIJob test manifest
+# This manifest creates a basic MPIJob with minimal configuration for testing
+apiVersion: kubeflow.org/v2
+kind: MPIJob
+metadata:
+  name: simple-mpijob-test
+  namespace: default
+  labels:
+    app: mpijob
+    test: simple
+spec:
+  slotsPerWorker: 1
+  mpiImplementation: OpenMPI
+  runPolicy:
+    cleanPodPolicy: Running
+    ttlSecondsAfterFinished: 300
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: mpi-launcher
+            image: docker.io/kubeflow/mpi-horovod-example:latest
+            command:
+            - mpirun
+            - --allow-run-as-root
+            - -np
+            - "2"
+            - --host
+            - simple-mpijob-test-worker-0:1,simple-mpijob-test-worker-1:1
+            - python
+            - /examples/tensorflow_mnist.py
+            resources:
+              requests:
+                cpu: "1"
+                memory: "2Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+    Worker:
+      replicas: 2
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+          - name: mpi-worker
+            image: docker.io/kubeflow/mpi-horovod-example:latest
+            command:
+            - /usr/sbin/sshd
+            - -De
+            - -f
+            - /home/mpiuser/.sshd_config
+            resources:
+              requests:
+                cpu: "2"
+                memory: "4Gi"
+              limits:
+                cpu: "4"
+                memory: "8Gi"

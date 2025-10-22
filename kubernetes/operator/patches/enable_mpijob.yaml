@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeflow-training-operator
+  namespace: openshift-ai
+spec:
+  template:
+    spec:
+      containers:
+      - name: kubeflow-training-operator
+        args:
+        - --enable-mpijob=true
+        - --enable-tfjob=true
+        - --enable-pytorchjob=true
+        - --enable-xgboostjob=true
+        - --leader-elect=true
+        - --v=2
+        - --enable-webhook=true
+        - --webhook-port=8443
+        - --webhook-cert-dir=/etc/webhook/certs
+        - --webhook-service-name=kubeflow-training-operator
+        volumeMounts:
+        - name: webhook-certs
+          mountPath: /etc/webhook/certs
+          readOnly: true
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: kubeflow-training-operator-webhook-certs

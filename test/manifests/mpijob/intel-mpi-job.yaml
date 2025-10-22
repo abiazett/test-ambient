@@ -1,0 +1,79 @@
+---
+# Intel MPI implementation test manifest
+# This manifest demonstrates MPIJob with Intel MPI implementation
+apiVersion: kubeflow.org/v2
+kind: MPIJob
+metadata:
+  name: intel-mpi-test
+  namespace: default
+  labels:
+    app: mpijob
+    test: intel-mpi
+    mpi-implementation: intel
+spec:
+  slotsPerWorker: 4
+  mpiImplementation: IntelMPI
+  runPolicy:
+    cleanPodPolicy: All
+    ttlSecondsAfterFinished: 300
+    backoffLimit: 3
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            app: intel-mpi-launcher
+        spec:
+          containers:
+          - name: mpi-launcher
+            image: docker.io/intel/oneapi-hpckit:latest
+            command:
+            - mpirun
+            - -n
+            - "16"
+            - -ppn
+            - "4"
+            - -hosts
+            - intel-mpi-test-worker-0,intel-mpi-test-worker-1,intel-mpi-test-worker-2,intel-mpi-test-worker-3
+            - /opt/intel/oneapi/mpi/latest/bin/IMB-MPI1
+            - PingPong
+            env:
+            - name: I_MPI_FABRICS
+              value: "shm:tcp"
+            - name: I_MPI_TCP_NETMASK
+              value: "eth0"
+            resources:
+              requests:
+                cpu: "2"
+                memory: "4Gi"
+              limits:
+                cpu: "4"
+                memory: "8Gi"
+    Worker:
+      replicas: 4
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            app: intel-mpi-worker
+        spec:
+          containers:
+          - name: mpi-worker
+            image: docker.io/intel/oneapi-hpckit:latest
+            command:
+            - /usr/sbin/sshd
+            - -D
+            env:
+            - name: I_MPI_FABRICS
+              value: "shm:tcp"
+            - name: I_MPI_TCP_NETMASK
+              value: "eth0"
+            resources:
+              requests:
+                cpu: "4"
+                memory: "8Gi"
+              limits:
+                cpu: "8"
+                memory: "16Gi"

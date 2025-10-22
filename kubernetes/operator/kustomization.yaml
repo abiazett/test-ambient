@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: openshift-ai
+
+resources:
+- deployment.yaml
+- service.yaml
+- role.yaml
+
+commonLabels:
+  app.kubernetes.io/name: kubeflow-training-operator
+  app.kubernetes.io/part-of: kubeflow-training-operator
+  app.kubernetes.io/component: mpijob-controller
+  app.kubernetes.io/version: v2.0.0
+
+patchesStrategicMerge:
+- patches/enable_mpijob.yaml

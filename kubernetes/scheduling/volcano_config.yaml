@@ -1,0 +1,58 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: mpijob-queue
+spec:
+  weight: 10
+  reclaimable: false
+  capability:
+    cpu: "100"
+    memory: "100Gi"
+    nvidia.com/gpu: "100"
+
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: PodGroup
+metadata:
+  name: "{{.JobName}}"
+  namespace: "{{.Namespace}}"
+  labels:
+    training.kubeflow.org/job-name: "{{.JobName}}"
+    app.kubernetes.io/name: mpijob-{{.JobName}}
+    app.kubernetes.io/part-of: kubeflow-training-operator
+    app.kubernetes.io/instance: "{{.JobName}}"
+spec:
+  minMember: "{{.MinMember}}"
+  queue: mpijob-queue
+  priorityClassName: "{{.PriorityClass}}"
+  minResources:
+    cpu: "{{.CPURequest}}"
+    memory: "{{.MemoryRequest}}"
+    nvidia.com/gpu: "{{.GPURequest}}"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mpijob-high-priority
+value: 1000000
+globalDefault: false
+description: "High priority for MPIJobs that should preempt other workloads"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mpijob-medium-priority
+value: 100000
+globalDefault: false
+description: "Medium priority for MPIJobs"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: mpijob-low-priority
+value: 10000
+globalDefault: false
+description: "Low priority for MPIJobs"
