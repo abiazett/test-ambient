@@ -1,0 +1,718 @@
+openapi: 3.0.3
+info:
+  title: OpenShift AI Training Jobs API
+  description: |
+    REST API for managing training jobs in OpenShift AI, including MPIJob support via Trainer V2.
+    This API extends the existing Trainer V2 Dashboard API with MPI-specific features.
+  version: 1.0.0
+  contact:
+    name: OpenShift AI Team
+servers:
+  - url: https://{dashboard-host}/api/v1
+    description: OpenShift AI Dashboard API
+    variables:
+      dashboard-host:
+        default: localhost:3000
+
+security:
+  - OAuth2: []
+
+paths:
+  /namespaces/{namespace}/trainjobs:
+    get:
+      summary: List training jobs
+      description: Returns all training jobs in the specified namespace, including MPIJobs
+      operationId: listTrainJobs
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Namespace to list jobs from
+        - name: runtime
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by runtime type (e.g., "mpi", "pytorch", "tensorflow")
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [Pending, Running, Succeeded, Failed]
+          description: Filter by job status
+      responses:
+        '200':
+          description: List of training jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainJobList'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient permissions
+
+    post:
+      summary: Create training job
+      description: Creates a new training job (MPIJob, PyTorchJob, etc.)
+      operationId: createTrainJob
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrainJobSpec'
+      responses:
+        '201':
+          description: Training job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainJob'
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient permissions
+
+  /namespaces/{namespace}/trainjobs/{name}:
+    get:
+      summary: Get training job details
+      description: Returns detailed information about a specific training job
+      operationId: getTrainJob
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Training job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainJob'
+        '404':
+          description: Training job not found
+
+    delete:
+      summary: Delete training job
+      description: Deletes a training job and associated resources
+      operationId: deleteTrainJob
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gracePeriodSeconds
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+          description: Grace period for pod termination
+      responses:
+        '204':
+          description: Training job deleted
+        '404':
+          description: Training job not found
+
+  /namespaces/{namespace}/trainjobs/{name}/logs:
+    get:
+      summary: Get training job logs
+      description: Returns logs from launcher and worker pods
+      operationId: getTrainJobLogs
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: podType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [launcher, worker, all]
+            default: all
+          description: Filter logs by pod type
+        - name: podIndex
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Worker pod index (0, 1, 2, ...) - only applicable for podType=worker
+        - name: tailLines
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+          description: Number of lines from end of logs
+        - name: sinceSeconds
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Logs from last N seconds
+      responses:
+        '200':
+          description: Training job logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogResponse'
+        '404':
+          description: Training job not found
+
+  /namespaces/{namespace}/trainjobs/{name}/events:
+    get:
+      summary: Get training job events
+      description: Returns lifecycle events for the training job
+      operationId: getTrainJobEvents
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Training job events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+        '404':
+          description: Training job not found
+
+  /namespaces/{namespace}/trainjobs/{name}/metrics:
+    get:
+      summary: Get training job metrics
+      description: Returns resource utilization metrics for launcher and worker pods
+      operationId: getTrainJobMetrics
+      tags:
+        - Training Jobs
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: timeRange
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d]
+            default: 1h
+          description: Time range for metrics
+      responses:
+        '200':
+          description: Training job metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+        '404':
+          description: Training job not found
+
+  /namespaces/{namespace}/clustertrainingruntimes:
+    get:
+      summary: List available training runtimes
+      description: Returns cluster-wide and namespace-scoped training runtimes
+      operationId: listTrainingRuntimes
+      tags:
+        - Training Runtimes
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: framework
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by framework (e.g., "mpi", "pytorch")
+      responses:
+        '200':
+          description: List of training runtimes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeList'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth/authorize
+          tokenUrl: /oauth/token
+          scopes:
+            read: Read access
+            write: Write access
+
+  schemas:
+    TrainJobList:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainJobSummary'
+
+    TrainJobSummary:
+      type: object
+      required:
+        - name
+        - namespace
+        - runtime
+        - framework
+        - status
+      properties:
+        name:
+          type: string
+          example: mnist-training
+        namespace:
+          type: string
+          example: ml-project
+        runtime:
+          type: string
+          example: mpi-horovod-gpu
+        framework:
+          type: string
+          enum: [MPI, PyTorch, TensorFlow, JAX]
+        status:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed]
+        startTime:
+          type: string
+          format: date-time
+          example: "2025-10-28T10:00:00Z"
+        completionTime:
+          type: string
+          format: date-time
+          nullable: true
+        duration:
+          type: string
+          example: "5m30s"
+        numNodes:
+          type: integer
+          example: 4
+        launcherStatus:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed]
+        workerStatuses:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              status:
+                type: string
+                enum: [Pending, Running, Succeeded, Failed]
+
+    TrainJob:
+      type: object
+      required:
+        - metadata
+        - spec
+        - status
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ObjectMeta'
+        spec:
+          $ref: '#/components/schemas/TrainJobSpec'
+        status:
+          $ref: '#/components/schemas/TrainJobStatus'
+
+    ObjectMeta:
+      type: object
+      required:
+        - name
+        - namespace
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        creationTimestamp:
+          type: string
+          format: date-time
+
+    TrainJobSpec:
+      type: object
+      required:
+        - runtimeRef
+        - trainer
+      properties:
+        runtimeRef:
+          $ref: '#/components/schemas/RuntimeRef'
+        trainer:
+          $ref: '#/components/schemas/TrainerSpec'
+        initializer:
+          $ref: '#/components/schemas/InitializerSpec'
+
+    RuntimeRef:
+      type: object
+      required:
+        - kind
+        - name
+      properties:
+        apiGroup:
+          type: string
+          default: kubeflow.org
+        kind:
+          type: string
+          enum: [TrainingRuntime, ClusterTrainingRuntime]
+        name:
+          type: string
+          example: mpi-horovod-gpu
+
+    TrainerSpec:
+      type: object
+      required:
+        - numNodes
+        - image
+        - resourcesPerNode
+      properties:
+        numNodes:
+          type: integer
+          minimum: 1
+          maximum: 64
+          example: 4
+        image:
+          type: string
+          example: horovod/horovod:0.28.1-tf2.11.0-torch2.0.0-mxnet1.9.1-py3.10-gpu
+        command:
+          type: array
+          items:
+            type: string
+          example: ["python", "/workspace/train.py"]
+        args:
+          type: array
+          items:
+            type: string
+        resourcesPerNode:
+          $ref: '#/components/schemas/ResourceRequirements'
+        env:
+          type: array
+          items:
+            $ref: '#/components/schemas/EnvVar'
+
+    InitializerSpec:
+      type: object
+      properties:
+        dataset:
+          type: object
+          properties:
+            storageUri:
+              type: string
+              example: "hf://huggingface/mnist"
+        model:
+          type: object
+          properties:
+            storageUri:
+              type: string
+              example: "s3://my-bucket/models/checkpoint"
+
+    ResourceRequirements:
+      type: object
+      properties:
+        requests:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "2"
+        limits:
+          type: object
+          additionalProperties:
+            type: string
+
+    EnvVar:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        valueFrom:
+          type: object
+
+    TrainJobStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed]
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        startTime:
+          type: string
+          format: date-time
+        completionTime:
+          type: string
+          format: date-time
+          nullable: true
+        launcherPodStatus:
+          $ref: '#/components/schemas/PodStatus'
+        workerPodStatuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PodStatus'
+        failureReason:
+          type: string
+          enum:
+            - GangSchedulingTimeout
+            - LauncherFailed
+            - WorkerFailed
+            - SSHConnectionFailed
+            - MPIInitializationFailed
+            - TrainingError
+            - ResourceQuotaExceeded
+        failureMessage:
+          type: string
+
+    Condition:
+      type: object
+      required:
+        - type
+        - status
+      properties:
+        type:
+          type: string
+          example: GangScheduling
+        status:
+          type: string
+          enum: [True, False, Unknown]
+        reason:
+          type: string
+        message:
+          type: string
+        lastTransitionTime:
+          type: string
+          format: date-time
+
+    PodStatus:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Worker index (null for launcher)
+          nullable: true
+        phase:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed]
+        reason:
+          type: string
+        message:
+          type: string
+
+    LogResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              podName:
+                type: string
+              podType:
+                type: string
+                enum: [launcher, worker]
+              index:
+                type: integer
+                nullable: true
+              timestamp:
+                type: string
+                format: date-time
+              message:
+                type: string
+
+    EventList:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [Normal, Warning]
+              reason:
+                type: string
+              message:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              source:
+                type: string
+
+    MetricsResponse:
+      type: object
+      properties:
+        launcher:
+          $ref: '#/components/schemas/PodMetrics'
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PodMetrics'
+
+    PodMetrics:
+      type: object
+      properties:
+        podName:
+          type: string
+        index:
+          type: integer
+          nullable: true
+        cpu:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              value:
+                type: number
+                description: CPU usage in cores
+        memory:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              value:
+                type: number
+                description: Memory usage in bytes
+        gpu:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              value:
+                type: number
+                description: GPU utilization percentage
+
+    RuntimeList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              kind:
+                type: string
+                enum: [TrainingRuntime, ClusterTrainingRuntime]
+              framework:
+                type: string
+              mpiImplementation:
+                type: string
+                nullable: true
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              reason:
+                type: string

@@ -1,0 +1,445 @@
+# Kubernetes CRD Schemas for MPIJob Support
+#
+# This file defines the Custom Resource Definition schemas for Trainer V2 TrainJob
+# and ClusterTrainingRuntime resources used for MPIJob support.
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: trainjobs.kubeflow.org
+spec:
+  group: kubeflow.org
+  names:
+    kind: TrainJob
+    listKind: TrainJobList
+    plural: trainjobs
+    singular: trainjob
+    shortNames:
+      - tj
+  scope: Namespaced
+  versions:
+    - name: v2alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - runtimeRef
+                - trainer
+              properties:
+                runtimeRef:
+                  description: Reference to TrainingRuntime or ClusterTrainingRuntime
+                  type: object
+                  required:
+                    - kind
+                    - name
+                  properties:
+                    apiGroup:
+                      type: string
+                      default: kubeflow.org
+                    kind:
+                      type: string
+                      enum:
+                        - TrainingRuntime
+                        - ClusterTrainingRuntime
+                    name:
+                      type: string
+                trainer:
+                  description: Training configuration
+                  type: object
+                  required:
+                    - numNodes
+                    - image
+                  properties:
+                    numNodes:
+                      description: Number of distributed training nodes
+                      type: integer
+                      minimum: 1
+                      maximum: 64
+                    image:
+                      description: Container image for training
+                      type: string
+                    command:
+                      description: Entrypoint command override
+                      type: array
+                      items:
+                        type: string
+                    args:
+                      description: Command arguments
+                      type: array
+                      items:
+                        type: string
+                    resourcesPerNode:
+                      description: Resource requests and limits per node
+                      type: object
+                      properties:
+                        requests:
+                          type: object
+                          additionalProperties:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                        limits:
+                          type: object
+                          additionalProperties:
+                            anyOf:
+                              - type: string
+                              - type: integer
+                    env:
+                      description: Environment variables
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - name
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            type: string
+                          valueFrom:
+                            type: object
+                initializer:
+                  description: Optional automated dataset and model setup
+                  type: object
+                  properties:
+                    dataset:
+                      type: object
+                      properties:
+                        storageUri:
+                          type: string
+                          description: Dataset location (s3://, hf://)
+                    model:
+                      type: object
+                      properties:
+                        storageUri:
+                          type: string
+                          description: Model location
+            status:
+              type: object
+              properties:
+                phase:
+                  description: Current job phase
+                  type: string
+                  enum:
+                    - Pending
+                    - Running
+                    - Succeeded
+                    - Failed
+                conditions:
+                  description: Detailed status conditions
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                startTime:
+                  description: Job start time
+                  type: string
+                  format: date-time
+                completionTime:
+                  description: Job completion time
+                  type: string
+                  format: date-time
+                launcherPodStatus:
+                  description: Launcher pod status
+                  type: object
+                  properties:
+                    phase:
+                      type: string
+                      enum:
+                        - Pending
+                        - Running
+                        - Succeeded
+                        - Failed
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                workerPodStatuses:
+                  description: Worker pod statuses
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      index:
+                        type: integer
+                      phase:
+                        type: string
+                        enum:
+                          - Pending
+                          - Running
+                          - Succeeded
+                          - Failed
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                failureReason:
+                  description: High-level failure category
+                  type: string
+                  enum:
+                    - GangSchedulingTimeout
+                    - LauncherFailed
+                    - WorkerFailed
+                    - SSHConnectionFailed
+                    - MPIInitializationFailed
+                    - TrainingError
+                    - ResourceQuotaExceeded
+                failureMessage:
+                  description: Detailed failure message
+                  type: string
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+        - name: Runtime
+          type: string
+          jsonPath: .spec.runtimeRef.name
+        - name: Nodes
+          type: integer
+          jsonPath: .spec.trainer.numNodes
+      subresources:
+        status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clustertrainingruntimes.kubeflow.org
+spec:
+  group: kubeflow.org
+  names:
+    kind: ClusterTrainingRuntime
+    listKind: ClusterTrainingRuntimeList
+    plural: clustertrainingruntimes
+    singular: clustertrainingruntime
+    shortNames:
+      - ctr
+  scope: Cluster
+  versions:
+    - name: v2alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - template
+              properties:
+                mlPolicy:
+                  description: ML-specific configuration
+                  type: object
+                  properties:
+                    numNodes:
+                      description: Default number of nodes
+                      type: integer
+                      minimum: 1
+                    mpiImplementation:
+                      description: MPI framework variant
+                      type: string
+                      enum:
+                        - OpenMPI
+                        - IntelMPI
+                        - MPICH
+                    slotsPerWorker:
+                      description: MPI processes per worker
+                      type: integer
+                      minimum: 1
+                      maximum: 16
+                      default: 1
+                podGroupPolicy:
+                  description: Gang scheduling configuration
+                  type: object
+                  properties:
+                    coscheduling:
+                      type: object
+                      properties:
+                        scheduleTimeoutSeconds:
+                          description: Timeout for scheduling all pods
+                          type: integer
+                          minimum: 60
+                          maximum: 3600
+                          default: 300
+                    priorityClassName:
+                      description: Pod priority class
+                      type: string
+                template:
+                  description: Pod template definitions
+                  type: object
+                  required:
+                    - spec
+                  properties:
+                    spec:
+                      type: object
+                      required:
+                        - replicatedJobs
+                      properties:
+                        replicatedJobs:
+                          description: Job templates for launcher and workers
+                          type: array
+                          minItems: 2
+                          maxItems: 2
+                          items:
+                            type: object
+                            required:
+                              - name
+                              - template
+                            properties:
+                              name:
+                                type: string
+                                enum:
+                                  - launcher
+                                  - worker
+                              replicas:
+                                type: integer
+                                minimum: 1
+                              template:
+                                description: Kubernetes pod template
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: MPI Implementation
+          type: string
+          jsonPath: .spec.mlPolicy.mpiImplementation
+        - name: Timeout
+          type: integer
+          jsonPath: .spec.podGroupPolicy.coscheduling.scheduleTimeoutSeconds
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: trainingruntimes.kubeflow.org
+spec:
+  group: kubeflow.org
+  names:
+    kind: TrainingRuntime
+    listKind: TrainingRuntimeList
+    plural: trainingruntimes
+    singular: trainingruntime
+    shortNames:
+      - tr
+  scope: Namespaced
+  versions:
+    - name: v2alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          # Same schema as ClusterTrainingRuntime
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - template
+              properties:
+                mlPolicy:
+                  type: object
+                  properties:
+                    numNodes:
+                      type: integer
+                      minimum: 1
+                    mpiImplementation:
+                      type: string
+                      enum:
+                        - OpenMPI
+                        - IntelMPI
+                        - MPICH
+                    slotsPerWorker:
+                      type: integer
+                      minimum: 1
+                      maximum: 16
+                      default: 1
+                podGroupPolicy:
+                  type: object
+                  properties:
+                    coscheduling:
+                      type: object
+                      properties:
+                        scheduleTimeoutSeconds:
+                          type: integer
+                          minimum: 60
+                          maximum: 3600
+                          default: 300
+                    priorityClassName:
+                      type: string
+                template:
+                  type: object
+                  required:
+                    - spec
+                  properties:
+                    spec:
+                      type: object
+                      required:
+                        - replicatedJobs
+                      properties:
+                        replicatedJobs:
+                          type: array
+                          minItems: 2
+                          maxItems: 2
+                          items:
+                            type: object
+                            required:
+                              - name
+                              - template
+                            properties:
+                              name:
+                                type: string
+                                enum:
+                                  - launcher
+                                  - worker
+                              replicas:
+                                type: integer
+                                minimum: 1
+                              template:
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: MPI Implementation
+          type: string
+          jsonPath: .spec.mlPolicy.mpiImplementation
+        - name: Timeout
+          type: integer
+          jsonPath: .spec.podGroupPolicy.coscheduling.scheduleTimeoutSeconds
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
