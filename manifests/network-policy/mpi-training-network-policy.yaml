@@ -1,0 +1,277 @@
+# NetworkPolicy for MPI Training Jobs
+#
+# This NetworkPolicy allows SSH communication (port 2222) between launcher and worker
+# pods in distributed MPI training jobs while maintaining namespace isolation.
+#
+# Apply this policy to namespaces where MPIJobs will run:
+#   kubectl apply -f mpi-training-network-policy.yaml -n <training-namespace>
+#
+# Requirements:
+# - NetworkPolicy must be enabled in the cluster
+# - Pods must be labeled with training.kubeflow.org/job-name
+# - SSH communication uses port 2222
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpi-training-communication
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: mpi-training
+    app.kubernetes.io/managed-by: training-operator
+spec:
+  # Apply to all pods with the training job label
+  podSelector:
+    matchLabels:
+      training.kubeflow.org/job-name: ""  # Matches any training job
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules
+  ingress:
+    # Allow SSH connections from launcher to workers (port 2222)
+    - from:
+        # Allow from pods in the same namespace with the same job label
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-name: ""
+      ports:
+        - protocol: TCP
+          port: 2222
+
+    # Allow MPI communication between workers (for AllReduce, etc.)
+    - from:
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-role: worker
+      ports:
+        # MPI typically uses ephemeral ports, but common ranges:
+        - protocol: TCP
+          port: 2222  # SSH
+        - protocol: TCP
+          port: 12345  # Example MPI port
+
+  # Egress rules
+  egress:
+    # Allow SSH connections from launcher to workers
+    - to:
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-name: ""
+      ports:
+        - protocol: TCP
+          port: 2222
+
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow Kubernetes API access (for service discovery)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow access to external container registries (optional, adjust as needed)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443  # HTTPS
+        - protocol: TCP
+          port: 80   # HTTP
+
+    # Allow access to S3/object storage (adjust based on your setup)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9000  # MinIO
+        - protocol: TCP
+          port: 443   # AWS S3 HTTPS
+
+---
+# Stricter NetworkPolicy (optional) - for production environments
+# This policy is more restrictive and requires exact job name matching
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpi-training-strict
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: mpi-training-strict
+    app.kubernetes.io/managed-by: training-operator
+spec:
+  # Apply to all training pods
+  podSelector:
+    matchExpressions:
+      - key: training.kubeflow.org/job-name
+        operator: Exists
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules
+  ingress:
+    # ONLY allow SSH from pods with THE SAME job name
+    # This prevents cross-job communication even within the same namespace
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: training.kubeflow.org/job-name
+                operator: Exists
+      ports:
+        - protocol: TCP
+          port: 2222
+
+  # Egress rules
+  egress:
+    # ONLY allow SSH to pods with THE SAME job name
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: training.kubeflow.org/job-name
+                operator: Exists
+      ports:
+        - protocol: TCP
+          port: 2222
+
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Kubernetes API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# NetworkPolicy for multi-tenancy isolation
+# Prevents communication between different tenants' training jobs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mpi-training-tenant-isolation
+  labels:
+    app.kubernetes.io/name: networkpolicy
+    app.kubernetes.io/component: tenant-isolation
+spec:
+  # Apply to all pods in the namespace
+  podSelector: {}
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules
+  ingress:
+    # Only allow traffic from pods in the SAME namespace
+    - from:
+        - podSelector: {}
+
+  # Egress rules
+  egress:
+    # Only allow traffic to pods in the SAME namespace
+    - to:
+        - podSelector: {}
+
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow Kubernetes API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow external egress (internet, S3, etc.)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+        - protocol: UDP
+
+---
+# Example: Per-job NetworkPolicy (template)
+# This would be created by the controller for each TrainJob
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trainjob-example-job-network
+  labels:
+    training.kubeflow.org/job-name: example-job
+spec:
+  # Only apply to pods of this specific job
+  podSelector:
+    matchLabels:
+      training.kubeflow.org/job-name: example-job
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow SSH from launcher to workers WITHIN THIS JOB
+    - from:
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-name: example-job
+              training.kubeflow.org/job-role: launcher
+      ports:
+        - protocol: TCP
+          port: 2222
+
+    # Allow MPI communication between workers WITHIN THIS JOB
+    - from:
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-name: example-job
+              training.kubeflow.org/job-role: worker
+      ports:
+        - protocol: TCP
+
+  egress:
+    # Allow egress to pods WITHIN THIS JOB
+    - to:
+        - podSelector:
+            matchLabels:
+              training.kubeflow.org/job-name: example-job
+
+    # Allow DNS and Kubernetes API
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 443

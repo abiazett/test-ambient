@@ -35,7 +35,7 @@ This is a multi-repository project. Tasks span across:
 - [ ] T005 [P] Fork and clone kubeflow/training-sdk repository
 - [ ] T006 [P] Fork and clone opendatahub-io/odh-dashboard repository
 - [ ] T007 [P] Fork and clone red-hat-data-services/openshift-ai-tests repository
-- [ ] T008 Create reference ClusterTrainingRuntime templates (mpi-horovod-gpu, mpi-openmpi-cpu) in yaml manifests
+- [X] T008 Create reference ClusterTrainingRuntime templates (mpi-horovod-gpu, mpi-openmpi-cpu) in yaml manifests
 - [ ] T009 [P] Configure Go 1.21+ development environment with required dependencies
 - [ ] T010 [P] Configure Python 3.11+ development environment with pytest and poetry
 
@@ -99,7 +99,7 @@ This is a multi-repository project. Tasks span across:
 - [ ] T034 [P] [US4] Implement resource quota pre-flight checks (launcher + workers) in kubeflow/training-operator/pkg/controller/trainer/quota.go
 - [ ] T035 [US4] Add RBAC permission checks in controller admission webhook in kubeflow/training-operator/pkg/webhook/trainjob_webhook.go
 - [ ] T036 [US4] Implement namespace-scoped pod labeling for network policies in kubeflow/training-operator/pkg/controller/trainer/labels.go
-- [ ] T037 [P] [US4] Create standard NetworkPolicy template for MPI pod-to-pod SSH communication in manifests/network-policy.yaml
+- [X] T037 [P] [US4] Create standard NetworkPolicy template for MPI pod-to-pod SSH communication in manifests/network-policy.yaml
 - [ ] T038 [P] [US4] Document required RBAC roles (trainjob-editor, trainjob-viewer) in docs/rbac.md
 - [ ] T039 [US4] Add audit logging for TrainJob lifecycle events in kubeflow/training-operator/pkg/controller/trainer/audit.go
 - [ ] T040 [US4] Implement SSH secret RBAC restrictions (namespace-scoped access only) in kubeflow/training-operator/pkg/controller/trainer/ssh_keys.go
@@ -269,7 +269,7 @@ This is a multi-repository project. Tasks span across:
 
 **Purpose**: Security hardening and compliance validation for enterprise deployment
 
-- [ ] T112 [P] Create Security Context Constraints template for OpenShift in manifests/scc/mpi-training-scc.yaml
+- [X] T112 [P] Create Security Context Constraints template for OpenShift in manifests/scc/mpi-training-scc.yaml
 - [ ] T113 [P] Document FIPS compliance for SSH key generation in docs/security/fips.md
 - [ ] T114 [P] Implement penetration testing for multi-tenancy isolation per SC-009 in docs/security/pentest-plan.md
 - [ ] T115 Validate log sanitization prevents credential exposure in kubeflow/training-operator/pkg/controller/trainer/log_sanitizer.go

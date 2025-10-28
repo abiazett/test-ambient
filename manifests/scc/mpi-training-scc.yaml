@@ -1,0 +1,206 @@
+# Security Context Constraints for MPI Training Jobs
+#
+# This SCC allows MPI training pods to run SSH daemons on port 2222 without
+# requiring privileged mode or NET_BIND_SERVICE capability.
+#
+# Apply this SCC to OpenShift clusters:
+#   oc apply -f mpi-training-scc.yaml
+#   oc adm policy add-scc-to-user mpi-training system:serviceaccount:<namespace>:training-operator
+#
+# Based on the 'restricted' SCC with minimal additional permissions
+
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: mpi-training
+  annotations:
+    kubernetes.io/description: |
+      Security Context Constraints for MPI distributed training workloads.
+      Allows running SSH daemons on non-privileged ports (>1024) and host networking
+      for optimal MPI communication performance.
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+priority: 10
+allowPrivilegedContainer: false
+defaultAddCapabilities: null
+requiredDropCapabilities:
+  - KILL
+  - MKNOD
+  - SETUID
+  - SETGID
+allowedCapabilities: null
+
+# Allow host networking for optimal MPI performance (optional, can be false)
+# When true, enables low-latency MPI communication bypassing overlay network
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false  # Set to 'true' for maximum MPI performance
+allowHostPID: false
+allowHostPorts: false
+
+# Volume types allowed
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+
+# Run as any UID (training containers may use specific UIDs)
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 1000
+  uidRangeMax: 65535
+
+# SELinux context
+seLinuxContext:
+  type: MustRunAs
+  seLinuxOptions:
+    level: "s0:c0,c1024"
+
+# FSGroup settings
+fsGroup:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 65535
+
+# Supplemental groups
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 65535
+
+# Read-only root filesystem (can be false for training workloads)
+readOnlyRootFilesystem: false
+
+# Allow privilege escalation (needed for some MPI implementations)
+allowPrivilegeEscalation: false
+defaultAllowPrivilegeEscalation: false
+
+---
+# Alternative: Permissive SCC for MPI Training (for development/testing)
+# This SCC is more permissive and easier to use but less secure
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: mpi-training-permissive
+  annotations:
+    kubernetes.io/description: |
+      Permissive Security Context Constraints for MPI training (development/testing only).
+      Allows running as root and host networking for maximum compatibility.
+      NOT RECOMMENDED for production use.
+priority: 5
+allowPrivilegedContainer: false
+defaultAddCapabilities: null
+requiredDropCapabilities: null
+allowedCapabilities: null
+
+# Allow host networking for MPI
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: true  # Enabled for MPI performance
+allowHostPID: false
+allowHostPorts: true  # Allow binding to specific ports
+
+# Volume types
+volumes:
+  - "*"
+
+# Run as any user (including root)
+runAsUser:
+  type: RunAsAny
+
+# SELinux
+seLinuxContext:
+  type: RunAsAny
+
+# FSGroup
+fsGroup:
+  type: RunAsAny
+
+# Supplemental groups
+supplementalGroups:
+  type: RunAsAny
+
+# Read-only root filesystem
+readOnlyRootFilesystem: false
+
+# Allow privilege escalation
+allowPrivilegeEscalation: true
+defaultAllowPrivilegeEscalation: true
+
+---
+# Role binding example
+# Grant the MPI training SCC to the training-operator service account
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mpi-training-scc-user
+rules:
+  - apiGroups:
+      - security.openshift.io
+    resourceNames:
+      - mpi-training
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+
+---
+# ClusterRoleBinding to grant SCC to training-operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mpi-training-scc-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mpi-training-scc-user
+subjects:
+  - kind: ServiceAccount
+    name: training-operator
+    namespace: openshift-ai-operator  # Adjust to your operator namespace
+
+---
+# Alternative: Namespace-scoped RoleBinding
+# Use this if you want to grant SCC per-namespace instead of cluster-wide
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mpi-training-scc-binding
+  namespace: training-workloads  # Target namespace for training jobs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mpi-training-scc-user
+subjects:
+  - kind: ServiceAccount
+    name: training-operator
+    namespace: openshift-ai-operator  # Operator service account namespace
+
+---
+# ServiceAccount for training pods (optional)
+# If you want training pods to use a dedicated service account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mpi-training-sa
+  namespace: training-workloads
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mpi-training-sa-scc-binding
+  namespace: training-workloads
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mpi-training-scc-user
+subjects:
+  - kind: ServiceAccount
+    name: mpi-training-sa
+    namespace: training-workloads

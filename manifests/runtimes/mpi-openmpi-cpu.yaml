@@ -1,0 +1,266 @@
+# ClusterTrainingRuntime for OpenMPI CPU-based Training
+#
+# This runtime template provides a configuration for distributed CPU-based
+# training using OpenMPI without GPU acceleration.
+#
+# Use Case: Large-scale CPU training, inference workloads, or development/testing
+# MPI Implementation: OpenMPI 4.1+
+# GPU Support: None (CPU-only)
+#
+# Example Usage:
+#   kubectl apply -f mpi-openmpi-cpu.yaml
+#   # Then create a TrainJob referencing this runtime
+
+apiVersion: kubeflow.org/v2alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: mpi-openmpi-cpu
+  labels:
+    app.kubernetes.io/name: trainingruntime
+    app.kubernetes.io/component: mpi
+    app.kubernetes.io/managed-by: training-operator
+    training.kubeflow.org/framework: mpi
+    training.kubeflow.org/implementation: openmpi
+spec:
+  # ML-specific configuration
+  mlPolicy:
+    # Default to single node
+    numNodes: 1
+
+    # MPI implementation variant
+    mpiImplementation: OpenMPI
+
+    # MPI processes per worker pod
+    # For CPU training, can run multiple MPI ranks per pod
+    # Typically match to CPU core count
+    slotsPerWorker: 4
+
+  # Gang scheduling configuration
+  podGroupPolicy:
+    coscheduling:
+      # Timeout for gang scheduling (5 minutes)
+      scheduleTimeoutSeconds: 300
+
+  # JobSet template for launcher and worker pods
+  template:
+    spec:
+      replicatedJobs:
+        # Launcher pod configuration
+        - name: launcher
+          replicas: 1
+          template:
+            metadata:
+              labels:
+                training.kubeflow.org/job-role: launcher
+                training.kubeflow.org/replica-type: launcher
+              annotations:
+                sidecar.istio.io/inject: "false"
+            spec:
+              serviceAccountName: training-operator
+              restartPolicy: OnFailure
+
+              containers:
+                - name: launcher
+                  # Image will be overridden by TrainJob.spec.trainer.image
+                  image: mpioperator/openmpi:latest
+
+                  # MPI launcher command
+                  command:
+                    - mpirun
+                    - --allow-run-as-root
+                    - --hostfile
+                    - /etc/mpi/hostfile
+                    - --mca
+                    - btl_tcp_if_exclude
+                    - lo,docker0
+                    - --bind-to
+                    - none
+                    - --map-by
+                    - slot
+                    - -x
+                    - LD_LIBRARY_PATH
+                    - -x
+                    - PATH
+
+                  # Launcher resources (minimal CPU/memory)
+                  resources:
+                    requests:
+                      cpu: "1"
+                      memory: "2Gi"
+                    limits:
+                      cpu: "2"
+                      memory: "4Gi"
+
+                  # Volume mounts
+                  volumeMounts:
+                    - name: ssh-auth
+                      mountPath: /root/.ssh
+                      readOnly: true
+                    - name: hostfile
+                      mountPath: /etc/mpi
+                      readOnly: true
+
+                  # Environment variables
+                  env:
+                    - name: OMPI_ALLOW_RUN_AS_ROOT
+                      value: "1"
+                    - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+                      value: "1"
+
+              # Volumes
+              volumes:
+                - name: ssh-auth
+                  secret:
+                    secretName: $(JOB_NAME)-ssh
+                    defaultMode: 0600
+                    items:
+                      - key: ssh-privatekey
+                        path: id_rsa
+                      - key: ssh-publickey
+                        path: authorized_keys
+                      - key: config
+                        path: config
+                - name: hostfile
+                  configMap:
+                    name: $(JOB_NAME)-hostfile
+                    items:
+                      - key: hostfile
+                        path: hostfile
+
+        # Worker pod configuration
+        - name: worker
+          replicas: 1
+          template:
+            metadata:
+              labels:
+                training.kubeflow.org/job-role: worker
+                training.kubeflow.org/replica-type: worker
+              annotations:
+                sidecar.istio.io/inject: "false"
+            spec:
+              restartPolicy: OnFailure
+
+              containers:
+                - name: worker
+                  # Image will be overridden by TrainJob.spec.trainer.image
+                  image: mpioperator/openmpi:latest
+
+                  # Workers run sshd
+                  command:
+                    - /bin/bash
+                    - -c
+                    - |
+                      set -e
+
+                      # Start SSH daemon on port 2222
+                      mkdir -p /var/run/sshd
+                      /usr/sbin/sshd -D -p 2222 &
+                      SSHD_PID=$!
+
+                      # Wait for SSH daemon
+                      wait $SSHD_PID || true
+
+                      # Keep container running
+                      sleep infinity
+
+                  # Ports
+                  ports:
+                    - name: ssh
+                      containerPort: 2222
+                      protocol: TCP
+
+                  # Worker resources (CPU-only)
+                  # Will be overridden by TrainJob.spec.trainer.resourcesPerNode
+                  resources:
+                    requests:
+                      cpu: "8"
+                      memory: "16Gi"
+                    limits:
+                      cpu: "16"
+                      memory: "32Gi"
+
+                  # Volume mounts
+                  volumeMounts:
+                    - name: ssh-auth
+                      mountPath: /root/.ssh
+                      readOnly: true
+                    - name: sshd-config
+                      mountPath: /etc/ssh/sshd_config
+                      subPath: sshd_config
+                      readOnly: true
+
+                  # Environment variables
+                  env:
+                    - name: OMPI_ALLOW_RUN_AS_ROOT
+                      value: "1"
+                    - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+                      value: "1"
+                    # CPU-specific tuning
+                    - name: OMP_NUM_THREADS
+                      value: "4"
+                    - name: MKL_NUM_THREADS
+                      value: "4"
+
+              # Volumes
+              volumes:
+                - name: ssh-auth
+                  secret:
+                    secretName: $(JOB_NAME)-ssh
+                    defaultMode: 0600
+                    items:
+                      - key: ssh-privatekey
+                        path: id_rsa
+                      - key: ssh-publickey
+                        path: authorized_keys
+                - name: sshd-config
+                  configMap:
+                    name: $(JOB_NAME)-sshd-config
+                    items:
+                      - key: sshd_config
+                        path: sshd_config
+
+---
+# Example TrainJob using this runtime
+# Users can copy and modify this example
+apiVersion: kubeflow.org/v2alpha1
+kind: TrainJob
+metadata:
+  name: mnist-cpu-distributed
+  namespace: default
+spec:
+  # Reference to the cluster runtime
+  runtimeRef:
+    kind: ClusterTrainingRuntime
+    name: mpi-openmpi-cpu
+
+  # Training configuration
+  trainer:
+    # Number of worker nodes
+    numNodes: 4
+
+    # Container image with training code
+    image: pytorch/pytorch:2.0.1-cpu
+
+    # Training command and arguments
+    command:
+      - python
+    args:
+      - /workspace/train.py
+      - --epochs=10
+      - --batch-size=64
+
+    # Resources per worker node
+    resourcesPerNode:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "16"
+        memory: "32Gi"
+
+    # Environment variables
+    env:
+      - name: PYTHONUNBUFFERED
+        value: "1"
+      - name: OMP_NUM_THREADS
+        value: "4"
