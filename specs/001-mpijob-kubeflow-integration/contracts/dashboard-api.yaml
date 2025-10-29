@@ -1,0 +1,659 @@
+# OpenShift AI Dashboard REST API Contract for MPIJob Operations
+# OpenAPI 3.0 Specification
+
+openapi: 3.0.3
+info:
+  title: OpenShift AI MPIJob API
+  description: REST API for managing MPIJobs in OpenShift AI Dashboard
+  version: 1.0.0
+  contact:
+    name: RHOAI Engineering Team
+    email: rhoai-support@redhat.com
+
+servers:
+  - url: https://odh-dashboard.apps.cluster.example.com/api
+    description: OpenShift AI Dashboard API Server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /mpijobs:
+    get:
+      summary: List MPIJobs
+      description: Returns a list of MPIJobs in accessible namespaces
+      operationId: listMPIJobs
+      tags:
+        - MPIJobs
+      parameters:
+        - name: namespace
+          in: query
+          description: Kubernetes namespace to filter by
+          schema:
+            type: string
+          required: false
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+            enum: [Pending, Running, Succeeded, Failed]
+          required: false
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of MPIJobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MPIJobList'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient RBAC permissions
+        '500':
+          description: Internal server error
+
+    post:
+      summary: Create MPIJob
+      description: Creates a new MPIJob in the specified namespace
+      operationId: createMPIJob
+      tags:
+        - MPIJobs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MPIJobCreate'
+      responses:
+        '201':
+          description: MPIJob created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MPIJob'
+        '400':
+          description: Invalid request body
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - insufficient RBAC permissions
+        '409':
+          description: Conflict - job with same name already exists
+        '500':
+          description: Internal server error
+
+  /mpijobs/{name}:
+    get:
+      summary: Get MPIJob details
+      description: Returns details of a specific MPIJob
+      operationId: getMPIJob
+      tags:
+        - MPIJobs
+      parameters:
+        - name: name
+          in: path
+          description: Name of the MPIJob
+          required: true
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          description: Kubernetes namespace
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MPIJob details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MPIJob'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: MPIJob not found
+        '500':
+          description: Internal server error
+
+    delete:
+      summary: Delete MPIJob
+      description: Deletes an MPIJob and associated resources
+      operationId: deleteMPIJob
+      tags:
+        - MPIJobs
+      parameters:
+        - name: name
+          in: path
+          description: Name of the MPIJob
+          required: true
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          description: Kubernetes namespace
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: MPIJob deleted successfully
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: MPIJob not found
+        '500':
+          description: Internal server error
+
+  /mpijobs/{name}/logs:
+    get:
+      summary: Get MPIJob logs
+      description: Retrieves logs from launcher or worker pods
+      operationId: getMPIJobLogs
+      tags:
+        - MPIJobs
+      parameters:
+        - name: name
+          in: path
+          description: Name of the MPIJob
+          required: true
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          description: Kubernetes namespace
+          required: true
+          schema:
+            type: string
+        - name: worker
+          in: query
+          description: Worker index (omit for launcher logs)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: follow
+          in: query
+          description: Stream logs in real-time
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - name: tail
+          in: query
+          description: Number of lines from end of logs
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1000
+      responses:
+        '200':
+          description: Pod logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: MPIJob or pod not found
+        '500':
+          description: Internal server error
+
+  /mpijobs/{name}/metrics:
+    get:
+      summary: Get MPIJob metrics
+      description: Retrieves performance metrics for the MPIJob
+      operationId: getMPIJobMetrics
+      tags:
+        - MPIJobs
+      parameters:
+        - name: name
+          in: path
+          description: Name of the MPIJob
+          required: true
+          schema:
+            type: string
+        - name: namespace
+          in: query
+          description: Kubernetes namespace
+          required: true
+          schema:
+            type: string
+        - name: startTime
+          in: query
+          description: Start of time range (RFC3339)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: endTime
+          in: query
+          description: End of time range (RFC3339)
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Job metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: MPIJob not found
+        '500':
+          description: Internal server error
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    MPIJobList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MPIJob'
+        total:
+          type: integer
+          description: Total number of MPIJobs matching filters
+        offset:
+          type: integer
+          description: Pagination offset
+        limit:
+          type: integer
+          description: Maximum results per page
+
+    MPIJob:
+      type: object
+      required:
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          example: kubeflow.org/v2beta1
+        kind:
+          type: string
+          example: MPIJob
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        spec:
+          $ref: '#/components/schemas/MPIJobSpec'
+        status:
+          $ref: '#/components/schemas/MPIJobStatus'
+
+    MPIJobCreate:
+      type: object
+      required:
+        - metadata
+        - spec
+      properties:
+        metadata:
+          $ref: '#/components/schemas/MetadataCreate'
+        spec:
+          $ref: '#/components/schemas/MPIJobSpec'
+
+    Metadata:
+      type: object
+      properties:
+        name:
+          type: string
+          description: MPIJob name (DNS-1123 subdomain)
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+        namespace:
+          type: string
+          description: Kubernetes namespace
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        creationTimestamp:
+          type: string
+          format: date-time
+        uid:
+          type: string
+
+    MetadataCreate:
+      type: object
+      required:
+        - name
+        - namespace
+      properties:
+        name:
+          type: string
+          description: MPIJob name (DNS-1123 subdomain)
+          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
+        namespace:
+          type: string
+          description: Kubernetes namespace
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+
+    MPIJobSpec:
+      type: object
+      required:
+        - mpiReplicaSpecs
+      properties:
+        mpiReplicaSpecs:
+          type: object
+          required:
+            - Launcher
+            - Worker
+          properties:
+            Launcher:
+              $ref: '#/components/schemas/ReplicaSpec'
+            Worker:
+              $ref: '#/components/schemas/ReplicaSpec'
+        slotsPerWorker:
+          type: integer
+          minimum: 1
+          maximum: 8
+          default: 1
+        cleanPodPolicy:
+          type: string
+          enum: [All, Running, None]
+          default: Running
+        runPolicy:
+          $ref: '#/components/schemas/RunPolicy'
+
+    ReplicaSpec:
+      type: object
+      required:
+        - replicas
+        - template
+      properties:
+        replicas:
+          type: integer
+          minimum: 1
+        template:
+          $ref: '#/components/schemas/PodTemplateSpec'
+
+    PodTemplateSpec:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+            annotations:
+              type: object
+              additionalProperties:
+                type: string
+        spec:
+          $ref: '#/components/schemas/PodSpec'
+
+    PodSpec:
+      type: object
+      required:
+        - containers
+      properties:
+        containers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Container'
+        volumes:
+          type: array
+          items:
+            type: object
+        nodeSelector:
+          type: object
+          additionalProperties:
+            type: string
+        affinity:
+          type: object
+        tolerations:
+          type: array
+          items:
+            type: object
+
+    Container:
+      type: object
+      required:
+        - name
+        - image
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+          description: Container image reference
+        command:
+          type: array
+          items:
+            type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: string
+        resources:
+          $ref: '#/components/schemas/ResourceRequirements'
+        volumeMounts:
+          type: array
+          items:
+            type: object
+
+    ResourceRequirements:
+      type: object
+      properties:
+        requests:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            cpu: "4"
+            memory: "16Gi"
+            nvidia.com/gpu: "1"
+        limits:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            cpu: "8"
+            memory: "64Gi"
+            nvidia.com/gpu: "1"
+
+    RunPolicy:
+      type: object
+      properties:
+        activeDeadlineSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+        backoffLimit:
+          type: integer
+          minimum: 0
+          default: 6
+        ttlSecondsAfterFinished:
+          type: integer
+          format: int32
+          minimum: 0
+
+    MPIJobStatus:
+      type: object
+      properties:
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+        replicaStatuses:
+          type: object
+          properties:
+            Launcher:
+              $ref: '#/components/schemas/ReplicaStatus'
+            Worker:
+              $ref: '#/components/schemas/ReplicaStatus'
+        startTime:
+          type: string
+          format: date-time
+        completionTime:
+          type: string
+          format: date-time
+
+    Condition:
+      type: object
+      required:
+        - type
+        - status
+      properties:
+        type:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed]
+        status:
+          type: string
+          enum: ["True", "False", Unknown]
+        reason:
+          type: string
+        message:
+          type: string
+        lastTransitionTime:
+          type: string
+          format: date-time
+
+    ReplicaStatus:
+      type: object
+      properties:
+        active:
+          type: integer
+          description: Number of active replicas
+        succeeded:
+          type: integer
+          description: Number of succeeded replicas
+        failed:
+          type: integer
+          description: Number of failed replicas
+
+    LogsResponse:
+      type: object
+      properties:
+        logs:
+          type: string
+          description: Pod logs (plain text or structured JSON)
+        pod:
+          type: string
+          description: Pod name
+        container:
+          type: string
+          description: Container name
+        timestamp:
+          type: string
+          format: date-time
+
+    MetricsResponse:
+      type: object
+      properties:
+        jobName:
+          type: string
+        namespace:
+          type: string
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerMetrics'
+        aggregated:
+          $ref: '#/components/schemas/AggregatedMetrics'
+
+    WorkerMetrics:
+      type: object
+      properties:
+        workerIndex:
+          type: integer
+        podName:
+          type: string
+        gpuUtilization:
+          type: number
+          format: float
+          description: GPU utilization percentage (0-100)
+        gpuMemoryUsed:
+          type: integer
+          format: int64
+          description: GPU memory used (bytes)
+        cpuUsage:
+          type: number
+          format: float
+          description: CPU usage (cores)
+        memoryUsage:
+          type: integer
+          format: int64
+          description: Memory usage (bytes)
+        networkTxBytes:
+          type: integer
+          format: int64
+          description: Network transmit bytes
+
+    AggregatedMetrics:
+      type: object
+      properties:
+        avgGpuUtilization:
+          type: number
+          format: float
+        totalGpuMemoryUsed:
+          type: integer
+          format: int64
+        avgCpuUsage:
+          type: number
+          format: float
+        totalMemoryUsage:
+          type: integer
+          format: int64
+        totalNetworkTxBytes:
+          type: integer
+          format: int64
