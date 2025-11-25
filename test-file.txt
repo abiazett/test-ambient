@@ -1,0 +1,8 @@
+Git Configuration Test
+=====================
+
+This is a sample file created to test git configuration.
+
+Created on: 2025-11-25
+
+If you can see this file pushed to your repository, your git configuration is working correctly!
